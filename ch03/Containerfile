@@ -1,0 +1,8 @@
+FROM registry.access.redhat.com/ubi9/ubi-minimal
+
+WORKDIR /models
+
+COPY rf_iris.onnx /models/1/
+
+LABEL org.opencontainers.image.title="Iris classification model"
+LABEL org.opencontainers.image.description="Extracted from quay.io/redhattraining/ai265-models:2.13 but originally trained from the iris dataset https://www.kaggle.com/datasets/uciml/iris/data"
