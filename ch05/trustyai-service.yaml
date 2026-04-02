@@ -1,0 +1,11 @@
+apiVersion: trustyai.opendatahub.io/v1
+kind: TrustyAIService
+metadata:
+  name: trustyai-service 
+spec:
+  storage:
+    format: "PVC" 
+    size: "1Gi" 
+  metrics:
+    schedule: "5s"
+    batchSize: 25
