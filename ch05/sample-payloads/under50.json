@@ -1,0 +1,23 @@
+{
+  "model_name": "diabetes",
+  "inputs": [
+    {
+      "name": "dense_input",
+      "shape": [
+        1,
+        8
+      ],
+      "datatype": "FP32",
+      "data": [
+        2.0,
+        140.0,
+        80.0,
+        25.0,
+        150.0,
+        31.5,
+        0.45,
+        0.0
+      ]
+    }
+  ]
+}
