@@ -1,56 +1,95 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Configuration
-export MODEL_URL="https://diabetes-myproj1.apps.ocp4.example.com/v2/models/diabetes/infer"
-export TOKEN=$(oc whoami -t)
+# Required:
+#   export TOKEN=$(oc whoami -t)
+#
+# Optional:
+#   export MODEL_URL="https://diabetes-myproj1.apps.ocp4.example.com"
+#   export ITERATIONS=5
 
-echo "🚀 Starting data injection for Diabetes Bias Demo..."
+MODEL_URL="${MODEL_URL:-https://diabetes-myproj1.apps.ocp4.example.com}"
+MODEL_NAME="${MODEL_NAME:-diabetes}"
+ITERATIONS="${ITERATIONS:-5}"
 
-# Loop 100 times to create a batch
-for i in {1..100}
-do
-    # 1. Logic to split Age (Feature Index 7)
-    # We send 50 "Young" (25) and 50 "Old" (50) to match our SPD configuration
-    if [ $i -le 50 ]; then
-        AGE=25.0
-        GLUCOSE=$(( ( RANDOM % 40 ) + 90 )) # Normal-ish Glucose for young
-    else
-        AGE=50.0
-        GLUCOSE=$(( ( RANDOM % 60 ) + 130 )) # Slightly higher Glucose for old
-    fi
+if [[ -z "${TOKEN:-}" ]]; then
+  echo "ERROR: TOKEN is not set."
+  echo 'Run: export TOKEN=$(oc whoami -t)'
+  exit 1
+fi
 
-    # 2. Randomize other features for "Realism"
-    PREG=$(( RANDOM % 5 ))
-    BP=$(( ( RANDOM % 20 ) + 70 ))
-    SKIN=$(( ( RANDOM % 10 ) + 20 ))
-    INSULIN=$(( RANDOM % 100 ))
-    BMI="3$(($RANDOM % 9)).$(($RANDOM % 9))" # Random BMI in the 30s
-    PEDIGREE="0.$(($RANDOM % 800 + 100))"
+INFER_URL="${MODEL_URL}/v2/models/${MODEL_NAME}/infer"
 
-    # 3. Construct the KServe V2 JSON Payload
-    PAYLOAD=$(cat <<EOF
+# Sample rows WITHOUT AgeOver50.
+# The script will append 0.0 and 1.0 automatically.
+# Format:
+# Pregnancies,Glucose,BloodPressure,SkinThickness,Insulin,BMI,DiabetesPedigreeFunction
+SAMPLES=(
+  "0.0,92.0,68.0,18.0,80.0,23.5,0.18"
+  "1.0,110.0,72.0,20.0,100.0,26.0,0.25"
+  "2.0,125.0,76.0,22.0,120.0,28.0,0.30"
+  "2.0,135.0,80.0,24.0,140.0,30.0,0.40"
+  "2.0,140.0,80.0,25.0,150.0,31.5,0.45"
+  "3.0,145.0,84.0,28.0,170.0,33.0,0.50"
+  "4.0,155.0,88.0,30.0,200.0,36.0,0.65"
+  "5.0,185.0,96.0,35.0,240.0,40.0,0.82"
+)
+
+total=0
+
+echo "Sending demo traffic to ${INFER_URL}"
+echo "Iterations per sample/group: ${ITERATIONS}"
+echo
+
+for ageflag in 0.0 1.0; do
+  echo "Loading samples for AgeOver50=${ageflag}"
+  for sample in "${SAMPLES[@]}"; do
+    for ((i=1; i<=ITERATIONS; i++)); do
+      payload=$(cat <<EOF
 {
+  "model_name": "${MODEL_NAME}",
   "inputs": [
     {
       "name": "dense_input",
       "shape": [1, 8],
       "datatype": "FP32",
-      "data": [[$PREG, $GLUCOSE, $BP, $SKIN, $INSULIN, $BMI, $PEDIGREE, $AGE]]
+      "data": [${sample}, ${ageflag}]
     }
-  ],
-  "outputs": [{"name": "output0"}]
+  ]
 }
 EOF
 )
 
-    # 4. Send the inference request
-    # The inference-logger sidecar will intercept this automatically 
-    curl -sk -X POST -H "Authorization: Bearer $TOKEN" \
-         -H "Content-Type: application/json" \
-         -d "$PAYLOAD" $MODEL_URL > /dev/null
+      curl -sk \
+        -H "Authorization: Bearer ${TOKEN}" \
+        -H "Content-Type: application/json" \
+        "${INFER_URL}" \
+        -d "${payload}" >/dev/null
 
-    # Progress indicator
-    if (( $i % 10 == 0 )); then echo "✅ Sent $i observations..."; fi
+      total=$((total + 1))
+    done
+  done
 done
 
-echo "✨ Done! TrustyAI is now processing the observations."
+echo
+echo "Done."
+echo "Total inference requests sent: ${total}"
+echo
+echo "Next checks:"
+echo '  curl -sk -H "Authorization: Bearer ${TOKEN}" "${TRUSTY_ROUTE}/info" | jq'
+echo
+echo 'Then test SPD with:'
+cat <<'EOF'
+curl -sk -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -X POST "${TRUSTY_ROUTE}/metrics/group/fairness/spd" \
+  -d '{
+    "modelId": "diabetes",
+    "protectedAttribute": "AgeOver50",
+    "privilegedAttribute": {"type":"FLOAT","value":0},
+    "unprivilegedAttribute": {"type":"FLOAT","value":1},
+    "outcomeName": "Final_Prediction",
+    "favorableOutcome": {"type":"INT64","value":1},
+    "batchSize": 50
+  }' | jq
+EOF
