@@ -1,9 +1,16 @@
 # Standard Python: Requires Manual S3 Management
-def train_model(bucket_name, s3_key, model_save_path):
+from kfp.dsl import component
+
+@component(base_image=BASE_IMAGE)
+def train_model(
+    bucket_name: str, 
+    s3_key: str, 
+    model_save_path: str
+):
     import pandas as pd
     import joblib
     import boto3
-    import os 
+    import os
 
     # 1. Credentials: You must manually pull secrets from the OS environment
     s3 = boto3.client(
