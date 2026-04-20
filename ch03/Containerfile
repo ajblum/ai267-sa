@@ -1,7 +1,7 @@
 FROM registry.access.redhat.com/ubi9/ubi-minimal
 
-RUN mkdir -p /models/iris/1
-COPY --chown=0:0 rf_iris.onnx /models/iris/1/
+RUN mkdir -p /models/1
+COPY --chown=0:0 rf_iris.onnx /models/1/
 
 RUN chmod -R a=rX /models
 
