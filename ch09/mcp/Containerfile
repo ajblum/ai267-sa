@@ -1,0 +1,15 @@
+# Use a lightweight, secure base image
+FROM python:3-slim
+
+# Set up a non-root working directory
+WORKDIR /app
+
+# Copy the server script into the container
+COPY server.py .
+
+# Inform the container runtime that the app listens on port 8000
+EXPOSE 8000
+
+# Run the server with unbuffered output so logs stream immediately
+CMD ["python", "-u", "server.py"]
+
